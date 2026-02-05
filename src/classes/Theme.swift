@@ -43,6 +43,11 @@ open class Theme {
     
     /// Default background color for the current theme.
     open var themeBackgroundColor : RPColor!
+
+    /// Keyword color for the current theme (e.g. hljs-keyword foreground).
+    open var keywordColor: RPColor? {
+        themeDict?["hljs-keyword"]?[NSAttributedString.Key.foregroundColor] as? RPColor
+    }
     
     /**
      Initialize the theme with the given theme name.
