@@ -61,27 +61,11 @@ open class Theme {
         strippedTheme = stripTheme(themeString)
         lightTheme = strippedThemeToString(strippedTheme)
         themeDict = strippedThemeToTheme(strippedTheme)
-        var bkgColorHex = strippedTheme[".hljs"]?["background"]
-        if(bkgColorHex == nil)
-        {
-            bkgColorHex = strippedTheme[".hljs"]?["background-color"]
-        }
-        if let bkgColorHex = bkgColorHex
-        {
-            if(bkgColorHex == "white")
-            {
-                themeBackgroundColor = RPColor(white: 1, alpha: 1)
-            }else if(bkgColorHex == "black")
-            {
-                themeBackgroundColor = RPColor(white: 0, alpha: 1)
-            }else
-            {
-                let range = bkgColorHex.range(of: "#")
-                let str = String(bkgColorHex[(range?.lowerBound)!...])
-                themeBackgroundColor = colorWithHexString(str)
-            }
-        }else
-        {
+        let bkgColorHex = strippedTheme[".hljs"]?["background"]
+            ?? strippedTheme[".hljs"]?["background-color"]
+        if let bkgColorHex {
+            themeBackgroundColor = colorWithHexString(bkgColorHex)
+        } else {
             themeBackgroundColor = RPColor.white
         }
     }
