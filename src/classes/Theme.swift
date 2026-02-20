@@ -44,6 +44,9 @@ open class Theme {
     /// Default background color for the current theme.
     open var themeBackgroundColor : RPColor!
 
+    /// Default foreground (text) color for the current theme.
+    open var themeForegroundColor : RPColor!
+
     /// Keyword color for the current theme (e.g. hljs-keyword foreground).
     open var keywordColor: RPColor? {
         themeDict?["hljs-keyword"]?[NSAttributedString.Key.foregroundColor] as? RPColor
@@ -67,6 +70,12 @@ open class Theme {
             themeBackgroundColor = colorWithHexString(bkgColorHex)
         } else {
             themeBackgroundColor = RPColor.white
+        }
+        let fgColorHex = strippedTheme[".hljs"]?["color"]
+        if let fgColorHex {
+            themeForegroundColor = colorWithHexString(fgColorHex)
+        } else {
+            themeForegroundColor = RPColor.black
         }
     }
     
