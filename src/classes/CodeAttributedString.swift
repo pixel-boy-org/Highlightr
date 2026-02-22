@@ -47,11 +47,6 @@ open class CodeAttributedString : NSTextStorage
     /// This object will be notified before and after the highlighting.
     open var highlightDelegate : HighlightDelegate?
 
-    /// Debounce interval for highlighting during rapid edits (seconds).
-    open var highlightDebounceInterval: TimeInterval = 0.035
-
-    private var debounceTimer: DispatchSourceTimer?
-    private var pendingRange: NSRange?
     private var highlightGeneration: Int = 0
 
     /**
@@ -156,30 +151,9 @@ open class CodeAttributedString : NSTextStorage
             {
                 let string = (self.string as NSString)
                 let range = string.paragraphRange(for: editedRange)
-                scheduleHighlight(range)
+                highlight(range)
             }
         }
-    }
-
-    private func scheduleHighlight(_ range: NSRange)
-    {
-        // Merge with any pending range so we cover all edited paragraphs.
-        if let existing = pendingRange {
-            pendingRange = NSUnionRange(existing, range)
-        } else {
-            pendingRange = range
-        }
-
-        debounceTimer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + highlightDebounceInterval)
-        timer.setEventHandler { [weak self] in
-            guard let self = self, let range = self.pendingRange else { return }
-            self.pendingRange = nil
-            self.highlight(range)
-        }
-        timer.resume()
-        debounceTimer = timer
     }
 
     func highlight(_ range: NSRange)
