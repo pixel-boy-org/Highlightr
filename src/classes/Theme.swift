@@ -130,24 +130,31 @@ open class Theme {
     internal func applyStyleToString(_ string: String, styleList: [String]) -> NSAttributedString
     {
         let returnString : NSAttributedString
-        
+
         if styleList.count > 0
         {
             var attrs = [AttributedStringKey: Any]()
             attrs[.font] = codeFont
+
+            // Pre-resolve compound selectors once instead of checking per-style.
+            let hasTitle = styleList.contains("hljs-title")
+            let compoundKey: String? = {
+                if hasTitle {
+                    if styleList.contains("hljs-function"), themeDict["hljs-function-hljs-title"] != nil {
+                        return "hljs-function-hljs-title"
+                    }
+                    if styleList.contains("hljs-class"), themeDict["hljs-class-hljs-title"] != nil {
+                        return "hljs-class-hljs-title"
+                    }
+                }
+                return nil
+            }()
+
             for style in styleList
             {
-                var style = style
+                let resolvedStyle = compoundKey ?? style
 
-                if styleList.contains("hljs-title") && styleList.contains("hljs-function") && themeDict["hljs-function-hljs-title"] != nil {
-                    style = "hljs-function-hljs-title"
-                }
-
-                if styleList.contains("hljs-title") && styleList.contains("hljs-class") && themeDict["hljs-class-hljs-title"] != nil {
-                    style = "hljs-class-hljs-title"
-                }
-
-                if let themeStyle = themeDict[style] as? [AttributedStringKey: Any]
+                if let themeStyle = themeDict[resolvedStyle] as? [AttributedStringKey: Any]
                 {
                     for (attrName, attrValue) in themeStyle
                     {
@@ -155,7 +162,7 @@ open class Theme {
                     }
                 }
             }
-            
+
             returnString = NSAttributedString(string: string, attributes:attrs )
         }
         else
