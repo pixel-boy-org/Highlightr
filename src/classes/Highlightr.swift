@@ -99,6 +99,35 @@ open class Highlightr
         
         return true
     }
+
+    /**
+     Set the theme from a CSS string.
+
+     - parameter fromCSS: CSS theme contents.
+
+     - returns: true once the theme has been applied.
+     */
+    @discardableResult
+    open func setTheme(fromCSS themeString: String) -> Bool
+    {
+        theme = Theme(themeString: themeString)
+        return true
+    }
+
+    /**
+     Set the font used by the current theme and clear cached highlighted strings.
+
+     - parameter font: UIFont (iOS or tvOS) or NSFont (OSX)
+
+     - returns: true once the font has been applied.
+     */
+    @discardableResult
+    open func setCodeFont(_ font: RPFont) -> Bool
+    {
+        theme.setCodeFont(font)
+        highlightCache.removeAllObjects()
+        return true
+    }
     
     /**
      Takes a String and returns a NSAttributedString with the given language highlighted.
@@ -235,6 +264,7 @@ open class Highlightr
         var scannedString: NSString?
         let resultString = NSMutableAttributedString()
         var propStack = ["hljs"]
+        var spanClassCounts = [Int]()
         // Hoist NSString bridging out of the loop.
         let nsString = scanner.string as NSString
         let spanStartLen = (spanStart as NSString).length
@@ -270,12 +300,17 @@ open class Highlightr
                 scanner.scanLocation += spanStartLen
                 scanner.scanUpTo(spanStartClose, into:&scannedString)
                 scanner.scanLocation += spanStartCloseLen
-                propStack.append(scannedString! as String)
+                // Split multi-class values (e.g. "hljs-title class_") into
+                // individual entries so compound-key matching works.
+                let classes = (scannedString! as String).components(separatedBy: " ")
+                for cls in classes { propStack.append(cls) }
+                spanClassCounts.append(classes.count)
             }
             else if(nextChar == "/")
             {
                 scanner.scanLocation += spanEndLen
-                propStack.removeLast()
+                let count = spanClassCounts.popLast() ?? 1
+                propStack.removeLast(min(count, propStack.count))
             }else
             {
                 let decoded = decodeEntitiesInline("<")
