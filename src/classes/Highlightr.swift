@@ -21,6 +21,7 @@ open class Highlightr
     {
         didSet
         {
+            highlightCache.removeAllObjects()
             themeChanged?(theme)
         }
     }
@@ -39,6 +40,8 @@ open class Highlightr
     private let spanStartClose = "\">"
     private let spanEnd = "/span>"
     private let htmlEscape = try! NSRegularExpression(pattern: "&#?[a-zA-Z0-9]+?;", options: .caseInsensitive)
+
+    private var highlightCache = NSCache<NSString, NSAttributedString>()
     
     /**
      Default init method.
@@ -96,6 +99,35 @@ open class Highlightr
         
         return true
     }
+
+    /**
+     Set the theme from a CSS string.
+
+     - parameter fromCSS: CSS theme contents.
+
+     - returns: true once the theme has been applied.
+     */
+    @discardableResult
+    open func setTheme(fromCSS themeString: String) -> Bool
+    {
+        theme = Theme(themeString: themeString)
+        return true
+    }
+
+    /**
+     Set the font used by the current theme and clear cached highlighted strings.
+
+     - parameter font: UIFont (iOS or tvOS) or NSFont (OSX)
+
+     - returns: true once the font has been applied.
+     */
+    @discardableResult
+    open func setCodeFont(_ font: RPFont) -> Bool
+    {
+        theme.setCodeFont(font)
+        highlightCache.removeAllObjects()
+        return true
+    }
     
     /**
      Takes a String and returns a NSAttributedString with the given language highlighted.
@@ -108,6 +140,11 @@ open class Highlightr
      */
     open func highlight(_ code: String, as languageName: String? = nil, fastRender: Bool = true) -> NSAttributedString?
     {
+        let cacheKey = "\(languageName ?? "_auto"):\(code)" as NSString
+        if let cached = highlightCache.object(forKey: cacheKey) {
+            return cached
+        }
+
         let ret: JSValue?
         if let languageName = languageName
         {
@@ -140,14 +177,18 @@ open class Highlightr
              .documentType: NSAttributedString.DocumentType.html,
              .characterEncoding: String.Encoding.utf8.rawValue
              ]
-            
+
             guard let data = string.data(using: String.Encoding.utf8) else { return nil }
             safeMainSync
             {
                 returnString = try? NSMutableAttributedString(data:data, options: opt, documentAttributes:nil)
             }
         }
-        
+
+        if let result = returnString {
+            highlightCache.setObject(result, forKey: cacheKey)
+        }
+
         return returnString
     }
     
@@ -192,14 +233,44 @@ open class Highlightr
         }
     }
     
+    /// Decodes HTML entities in a text segment inline, avoiding a second-pass regex.
+    private func decodeEntitiesInline(_ text: String) -> String
+    {
+        guard text.contains("&") else { return text }
+        var result = ""
+        result.reserveCapacity(text.count)
+        var i = text.startIndex
+        while i < text.endIndex {
+            if text[i] == "&" {
+                if let semiIdx = text[i...].firstIndex(of: ";") {
+                    let entity = String(text[i...semiIdx])
+                    if let decoded = HTMLUtils.decode(entity) {
+                        result.append(decoded)
+                        i = text.index(after: semiIdx)
+                        continue
+                    }
+                }
+            }
+            result.append(text[i])
+            i = text.index(after: i)
+        }
+        return result
+    }
+
     private func processHTMLString(_ string: String) -> NSAttributedString?
     {
         let scanner = Scanner(string: string)
         scanner.charactersToBeSkipped = nil
         var scannedString: NSString?
-        let resultString = NSMutableAttributedString(string: "")
+        let resultString = NSMutableAttributedString()
         var propStack = ["hljs"]
-        
+        var spanClassCounts = [Int]()
+        // Hoist NSString bridging out of the loop.
+        let nsString = scanner.string as NSString
+        let spanStartLen = (spanStart as NSString).length
+        let spanStartCloseLen = (spanStartClose as NSString).length
+        let spanEndLen = (spanEnd as NSString).length
+
         while !scanner.isAtEnd
         {
             var ended = false
@@ -210,56 +281,45 @@ open class Highlightr
                     ended = true
                 }
             }
-            
+
             if scannedString != nil && scannedString!.length > 0 {
-                let attrScannedString = theme.applyStyleToString(scannedString! as String, styleList: propStack)
+                let decoded = decodeEntitiesInline(scannedString! as String)
+                let attrScannedString = theme.applyStyleToString(decoded, styleList: propStack)
                 resultString.append(attrScannedString)
                 if ended
                 {
                     continue
                 }
             }
-            
+
             scanner.scanLocation += 1
-            
-            let string = scanner.string as NSString
-            let nextChar = string.substring(with: NSMakeRange(scanner.scanLocation, 1))
+
+            let nextChar = nsString.substring(with: NSMakeRange(scanner.scanLocation, 1))
             if(nextChar == "s")
             {
-                scanner.scanLocation += (spanStart as NSString).length
+                scanner.scanLocation += spanStartLen
                 scanner.scanUpTo(spanStartClose, into:&scannedString)
-                scanner.scanLocation += (spanStartClose as NSString).length
-                propStack.append(scannedString! as String)
+                scanner.scanLocation += spanStartCloseLen
+                // Split multi-class values (e.g. "hljs-title class_") into
+                // individual entries so compound-key matching works.
+                let classes = (scannedString! as String).components(separatedBy: " ")
+                for cls in classes { propStack.append(cls) }
+                spanClassCounts.append(classes.count)
             }
             else if(nextChar == "/")
             {
-                scanner.scanLocation += (spanEnd as NSString).length
-                propStack.removeLast()
+                scanner.scanLocation += spanEndLen
+                let count = spanClassCounts.popLast() ?? 1
+                propStack.removeLast(min(count, propStack.count))
             }else
             {
-                let attrScannedString = theme.applyStyleToString("<", styleList: propStack)
+                let decoded = decodeEntitiesInline("<")
+                let attrScannedString = theme.applyStyleToString(decoded, styleList: propStack)
                 resultString.append(attrScannedString)
                 scanner.scanLocation += 1
             }
-            
-            scannedString = nil
-        }
-        
-        let results = htmlEscape.matches(in: resultString.string,
-                                               options: [.reportCompletion],
-                                               range: NSMakeRange(0, resultString.length))
-        var locOffset = 0
-        for result in results
-        {
-            let fixedRange = NSMakeRange(result.range.location-locOffset, result.range.length)
-            let entity = (resultString.string as NSString).substring(with: fixedRange)
-            if let decodedEntity = HTMLUtils.decode(entity)
-            {
-                resultString.replaceCharacters(in: fixedRange, with: String(decodedEntity))
-                locOffset += result.range.length-1;
-            }
-            
 
+            scannedString = nil
         }
 
         return resultString
