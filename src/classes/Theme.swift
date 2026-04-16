@@ -368,12 +368,18 @@ open class Theme {
         return UIFont(descriptor: descriptor, size: size)
         #else
         let size = codeFont.pointSize
-        let family = codeFont.familyName ?? "Menlo"
         let nsWeightMap: [Int: NSFont.Weight] = [
             100: .ultraLight, 200: .thin, 300: .light, 400: .regular,
             500: .medium, 600: .semibold, 700: .bold, 800: .heavy, 900: .black
         ]
         let nsWeight = nsWeightMap[cssWeight] ?? .regular
+
+        if isSystemMonospacedFont(codeFont),
+           #available(macOS 10.15, *) {
+            return monospacedSystemFont(ofSize: size, weight: nsWeight, italic: italic)
+        }
+
+        let family = codeFont.familyName ?? "Menlo"
         var traits = NSFontDescriptor.SymbolicTraits()
         if cssWeight >= 600 { traits.insert(.bold) }
         if italic { traits.insert(.italic) }
@@ -384,6 +390,26 @@ open class Theme {
         return NSFont(descriptor: descriptor, size: size) ?? codeFont
         #endif
     }
+
+    #if os(macOS)
+    private func isSystemMonospacedFont(_ font: NSFont) -> Bool {
+        font.familyName == ".AppleSystemUIFontMonospaced" ||
+            font.fontName.hasPrefix(".AppleSystemUIFontMonospaced")
+    }
+
+    @available(macOS 10.15, *)
+    private func monospacedSystemFont(
+        ofSize size: CGFloat,
+        weight: NSFont.Weight,
+        italic: Bool
+    ) -> NSFont {
+        let font = NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+        guard italic else { return font }
+
+        let italicFont = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        return NSFont(descriptor: italicFont.fontDescriptor, size: size) ?? italicFont
+    }
+    #endif
     
     private func attributeForCSSKey(_ key: String) -> AttributedStringKey
     {
