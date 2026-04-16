@@ -1,3 +1,16 @@
+2.3.0-pb.1 Release notes (2026-04-16)
+=============================================================
+
+### Changes
+
+* Based on upstream 2.3.0
+* Bundles highlight.js 11.11.1-pb.1
+
+### Bugfixes
+
+* Preserve SF Mono system font weights on macOS when rendering weighted themes.
+* Add regression coverage for weighted monospaced font mapping.
+
 2.3.0 Release notes (2025-06-18)
 =============================================================
 
