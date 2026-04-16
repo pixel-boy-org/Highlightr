@@ -31,5 +31,9 @@ let package = Package(
                 .process("assets/styles/.")
             ]
         ),
+        .testTarget(
+            name: "HighlightrTests",
+            dependencies: ["Highlightr"]
+        ),
     ]
 )
