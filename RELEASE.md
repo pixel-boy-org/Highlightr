@@ -36,8 +36,13 @@ This repo is a Pixel Boy-maintained fork of `raspu/Highlightr`.
 10. Create an annotated tag: `git tag -a <version> -m "<version>"`
 11. Push the branch and tag: `git push origin HEAD` and `git push origin <version>`
 12. After the tag is live, update downstream packages when you are ready:
-   - bump `pixel-boy-editor` to the new Highlightr tag
-   - resolve packages and rerun `swift test`
+   - update `pixel-boy-editor/Package.swift` to the new Highlightr tag:
+     `.package(url: "https://github.com/pixel-boy-org/Highlightr", exact: "<version>")`
+   - resolve packages in `pixel-boy-editor` so `Package.resolved` records the new version
+   - rerun `bin/test` or `swift test` in `pixel-boy-editor`
+   - commit both the manifest change and the `Package.resolved` change in `pixel-boy-editor`
+   - expect the host app's `Package.resolved` to update the next time Pixel Boy resolves or builds against the new local `pixel-boy-editor`
+   - if that host app lockfile change is intentional, commit it in `pixel-boy`
 
 ## Upstream Sync Notes
 
