@@ -33,10 +33,50 @@ private struct DisplayP3Color {
     var alpha: CGFloat
 }
 
+/// A concrete set of attributes to apply to a highlight.js token class.
+public struct HighlightrTokenStyle {
+    public var foregroundColor: RPColor?
+    public var backgroundColor: RPColor?
+    public var fontWeight: Int?
+    public var isItalic: Bool
+
+    public init(
+        foregroundColor: RPColor? = nil,
+        backgroundColor: RPColor? = nil,
+        fontWeight: Int? = nil,
+        isItalic: Bool = false
+    ) {
+        self.foregroundColor = foregroundColor
+        self.backgroundColor = backgroundColor
+        self.fontWeight = fontWeight
+        self.isItalic = isItalic
+    }
+}
+
+/// A host-provided theme that lets apps own syntax colors without shipping
+/// highlight.js CSS themes. Keys are highlight.js class names, such as
+/// "hljs-keyword", "hljs-string", or custom language classes.
+public struct HighlightrTokenTheme {
+    public var foregroundColor: RPColor
+    public var backgroundColor: RPColor
+    public var tokenStyles: [String: HighlightrTokenStyle]
+
+    public init(
+        foregroundColor: RPColor,
+        backgroundColor: RPColor,
+        tokenStyles: [String: HighlightrTokenStyle]
+    ) {
+        self.foregroundColor = foregroundColor
+        self.backgroundColor = backgroundColor
+        self.tokenStyles = tokenStyles
+    }
+}
+
 /// Theme parser, can be used to configure the theme parameters. 
 open class Theme {
     internal let theme : String
     internal var lightTheme : String!
+    internal var changeHandler: (() -> Void)?
     
     /// Regular font to be used by this theme
     open var codeFont : RPFont!
@@ -49,6 +89,15 @@ open class Theme {
     
     private var themeDict : RPThemeDict!
     private var strippedTheme : RPThemeStringDict!
+
+    /// Optional host-provided token theme. When set, its colors and token
+    /// styles override colors parsed from the CSS theme.
+    open var tokenTheme: HighlightrTokenTheme? {
+        didSet {
+            rebuildTheme()
+            changeHandler?()
+        }
+    }
     
     /// Default background color for the current theme.
     open var themeBackgroundColor : RPColor!
@@ -72,20 +121,7 @@ open class Theme {
         setCodeFont(RPFont(name: "Courier", size: 14)!)
         strippedTheme = stripTheme(themeString)
         lightTheme = strippedThemeToString(strippedTheme)
-        themeDict = strippedThemeToTheme(strippedTheme)
-        let bkgColorHex = strippedTheme[".hljs"]?["background"]
-            ?? strippedTheme[".hljs"]?["background-color"]
-        if let bkgColorHex {
-            themeBackgroundColor = colorWithHexString(bkgColorHex)
-        } else {
-            themeBackgroundColor = RPColor.white
-        }
-        let fgColorHex = strippedTheme[".hljs"]?["color"]
-        if let fgColorHex {
-            themeForegroundColor = colorWithHexString(fgColorHex)
-        } else {
-            themeForegroundColor = RPColor.black
-        }
+        rebuildTheme()
     }
     
     /**
@@ -139,9 +175,10 @@ open class Theme {
         boldItalicCodeFont = RPFont(descriptor: boldItalicDescriptor, size: font.pointSize) ?? boldCodeFont
         #endif
 
-        if(themeDict != nil)
+        if strippedTheme != nil
         {
-            themeDict = strippedThemeToTheme(strippedTheme)
+            rebuildTheme()
+            changeHandler?()
         }
     }
     
@@ -334,6 +371,79 @@ open class Theme {
             }
         }
         return returnTheme
+    }
+
+    private func rebuildTheme() {
+        guard strippedTheme != nil else { return }
+
+        themeDict = strippedThemeToTheme(strippedTheme)
+        applyParsedThemeColors()
+        applyTokenThemeIfNeeded()
+    }
+
+    private func applyParsedThemeColors() {
+        let bkgColorHex = strippedTheme[".hljs"]?["background"]
+            ?? strippedTheme[".hljs"]?["background-color"]
+        if let bkgColorHex {
+            themeBackgroundColor = colorWithHexString(bkgColorHex)
+        } else {
+            themeBackgroundColor = RPColor.white
+        }
+
+        let fgColorHex = strippedTheme[".hljs"]?["color"]
+        if let fgColorHex {
+            themeForegroundColor = colorWithHexString(fgColorHex)
+        } else {
+            themeForegroundColor = RPColor.black
+        }
+    }
+
+    private func applyTokenThemeIfNeeded() {
+        guard let tokenTheme else { return }
+
+        themeForegroundColor = tokenTheme.foregroundColor
+        themeBackgroundColor = tokenTheme.backgroundColor
+        merge(
+            HighlightrTokenStyle(foregroundColor: tokenTheme.foregroundColor),
+            intoStyleNamed: "hljs"
+        )
+
+        for (name, style) in tokenTheme.tokenStyles {
+            merge(style, intoStyleNamed: name)
+        }
+    }
+
+    private func merge(
+        _ tokenStyle: HighlightrTokenStyle,
+        intoStyleNamed styleName: String
+    ) {
+        let key = normalizedStyleName(styleName)
+        var attributes = (themeDict[key] as? [AttributedStringKey: AnyObject])
+            ?? [AttributedStringKey: AnyObject]()
+
+        if let foregroundColor = tokenStyle.foregroundColor {
+            attributes[.foregroundColor] = foregroundColor
+        }
+
+        if let backgroundColor = tokenStyle.backgroundColor, key != "hljs" {
+            attributes[.backgroundColor] = backgroundColor
+        }
+
+        if tokenStyle.fontWeight != nil || tokenStyle.isItalic {
+            attributes[.font] = fontForWeight(
+                tokenStyle.fontWeight ?? 400,
+                italic: tokenStyle.isItalic
+            )
+        }
+
+        themeDict[key] = attributes
+    }
+
+    private func normalizedStyleName(_ styleName: String) -> String {
+        let trimmed = styleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix(".")
+            ? String(trimmed.dropFirst())
+            : trimmed
     }
     
     private func fontForCSSStyle(_ fontStyle:String) -> RPFont

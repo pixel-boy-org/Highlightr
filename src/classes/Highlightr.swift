@@ -21,6 +21,7 @@ open class Highlightr
     {
         didSet
         {
+            configureThemeChangeHandler(theme)
             highlightCache.removeAllObjects()
             themeChanged?(theme)
         }
@@ -53,7 +54,7 @@ open class Highlightr
     public init?(highlightPath: String? = nil)
     {
         guard let jsContext = JSContext() else { return nil }
-        let window = JSValue(newObjectIn: jsContext)
+        _ = JSValue(newObjectIn: jsContext)
 
         #if SWIFT_PACKAGE
         let bundle = Bundle.module
@@ -67,7 +68,7 @@ open class Highlightr
         }
         
         guard let hgJs = try? String.init(contentsOfFile: hgPath) else { return nil }
-        let value = jsContext.evaluateScript(hgJs)
+        _ = jsContext.evaluateScript(hgJs)
         guard let hljs = jsContext.objectForKeyedSubscript("hljs") else { return nil }
 
         self.hljs = hljs
@@ -76,6 +77,7 @@ open class Highlightr
         {
             return nil
         }
+        configureThemeChangeHandler(theme)
         
     }
     
@@ -111,6 +113,24 @@ open class Highlightr
     open func setTheme(fromCSS themeString: String) -> Bool
     {
         theme = Theme(themeString: themeString)
+        return true
+    }
+
+    /**
+     Apply a host-provided token theme to the current theme.
+
+     Token themes let an app own syntax colors directly, including dynamic
+     platform colors from asset catalogs, while Highlightr continues to provide
+     tokenization and attributed string generation.
+
+     - parameter tokenTheme: Token styles keyed by highlight.js class names.
+
+     - returns: true once the token theme has been applied.
+     */
+    @discardableResult
+    open func setTokenTheme(_ tokenTheme: HighlightrTokenTheme) -> Bool
+    {
+        theme.tokenTheme = tokenTheme
         return true
     }
 
@@ -230,6 +250,14 @@ open class Highlightr
         }else
         {
             DispatchQueue.main.sync { block() }
+        }
+    }
+
+    private func configureThemeChangeHandler(_ theme: Theme) {
+        theme.changeHandler = { [weak self, weak theme] in
+            guard let self = self, let theme = theme else { return }
+            self.highlightCache.removeAllObjects()
+            self.themeChanged?(theme)
         }
     }
     
